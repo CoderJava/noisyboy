@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:noisyboy/src/rust/api/audio.dart' as rust;
@@ -11,6 +13,10 @@ sealed class LoopbackEvent extends Equatable {
 
 class DevicesLoaded extends LoopbackEvent {
   const DevicesLoaded();
+}
+
+class RefreshDevices extends LoopbackEvent {
+  const RefreshDevices();
 }
 
 class DeviceSelected extends LoopbackEvent {
@@ -43,6 +49,20 @@ class DenoiseToggled extends LoopbackEvent {
   const DenoiseToggled();
 }
 
+class ModeChanged extends LoopbackEvent {
+  final bool isVirtualMicMode;
+  const ModeChanged(this.isVirtualMicMode);
+  @override
+  List<Object?> get props => [isVirtualMicMode];
+}
+
+class AudioLevelUpdated extends LoopbackEvent {
+  final rust.AudioLevel level;
+  const AudioLevelUpdated(this.level);
+  @override
+  List<Object?> get props => [level.inputLevel, level.outputLevel];
+}
+
 /// State
 enum LoopbackStatus { idle, running, error }
 
@@ -60,6 +80,15 @@ class LoopbackState extends Equatable {
   /// null = pakai speaker default sistem.
   final String? selectedOutput;
 
+  /// Audio metering levels (0.0 to 1.0)
+  final double inputLevel;
+  final double outputLevel;
+
+  /// Virtual driver status
+  final bool isVirtualDriverInstalled;
+  final String? virtualDeviceName;
+  final bool isVirtualMicMode;
+
   const LoopbackState({
     this.status = LoopbackStatus.idle,
     this.message = 'Siap',
@@ -68,6 +97,11 @@ class LoopbackState extends Equatable {
     this.selectedDevice,
     this.outputDevices = const [],
     this.selectedOutput,
+    this.inputLevel = 0.0,
+    this.outputLevel = 0.0,
+    this.isVirtualDriverInstalled = false,
+    this.virtualDeviceName,
+    this.isVirtualMicMode = true,
   });
 
   bool get isRunning => status == LoopbackStatus.running;
@@ -80,6 +114,11 @@ class LoopbackState extends Equatable {
     String? selectedDevice,
     List<String>? outputDevices,
     String? selectedOutput,
+    double? inputLevel,
+    double? outputLevel,
+    bool? isVirtualDriverInstalled,
+    String? virtualDeviceName,
+    bool? isVirtualMicMode,
     bool clearSelected = false,
     bool clearOutput = false,
   }) {
@@ -93,31 +132,117 @@ class LoopbackState extends Equatable {
       outputDevices: outputDevices ?? this.outputDevices,
       selectedOutput:
           clearOutput ? null : (selectedOutput ?? this.selectedOutput),
+      inputLevel: inputLevel ?? this.inputLevel,
+      outputLevel: outputLevel ?? this.outputLevel,
+      isVirtualDriverInstalled:
+          isVirtualDriverInstalled ?? this.isVirtualDriverInstalled,
+      virtualDeviceName: virtualDeviceName ?? this.virtualDeviceName,
+      isVirtualMicMode: isVirtualMicMode ?? this.isVirtualMicMode,
     );
   }
 
   @override
-  List<Object?> get props =>
-      [status, message, denoiseOn, devices, selectedDevice, outputDevices, selectedOutput];
+  List<Object?> get props => [
+        status,
+        message,
+        denoiseOn,
+        devices,
+        selectedDevice,
+        outputDevices,
+        selectedOutput,
+        inputLevel,
+        outputLevel,
+        isVirtualDriverInstalled,
+        virtualDeviceName,
+        isVirtualMicMode,
+      ];
 }
 
 /// Bloc
 class LoopbackBloc extends Bloc<LoopbackEvent, LoopbackState> {
+  StreamSubscription<rust.AudioLevel>? _levelSub;
+
   LoopbackBloc() : super(LoopbackState(denoiseOn: rust.isDenoiseOn())) {
     on<DevicesLoaded>(_onDevicesLoaded);
+    on<RefreshDevices>(_onRefreshDevices);
     on<DeviceSelected>(_onDeviceSelected);
     on<OutputSelected>(_onOutputSelected);
+    on<ModeChanged>(_onModeChanged);
     on<LoopbackStarted>(_onStarted);
     on<LoopbackStopped>(_onStopped);
     on<LoopbackToggled>(_onToggled);
     on<DenoiseToggled>(_onDenoiseToggled);
+    on<AudioLevelUpdated>(_onAudioLevelUpdated);
+
+    _initLevelStream();
     add(const DevicesLoaded());
+  }
+
+  void _initLevelStream() {
+    _levelSub = rust.createAudioLevelStream().listen(
+      (level) => add(AudioLevelUpdated(level)),
+      onError: (err) {
+        // Stream error handling
+      },
+    );
   }
 
   void _onDevicesLoaded(DevicesLoaded event, Emitter<LoopbackState> emit) {
     final devices = rust.listInputDevices();
     final outputs = rust.listOutputDevices();
-    emit(state.copyWith(devices: devices, outputDevices: outputs));
+    final driverInstalled = rust.isVirtualDriverInstalled();
+    final virtualName = rust.getVirtualDeviceName();
+
+    emit(state.copyWith(
+      devices: devices,
+      outputDevices: outputs,
+      isVirtualDriverInstalled: driverInstalled,
+      virtualDeviceName: virtualName,
+      isVirtualMicMode: driverInstalled ? state.isVirtualMicMode : false,
+    ));
+  }
+
+  void _onRefreshDevices(RefreshDevices event, Emitter<LoopbackState> emit) {
+    final devices = rust.listInputDevices();
+    final outputs = rust.listOutputDevices();
+    final driverInstalled = rust.isVirtualDriverInstalled();
+    final virtualName = rust.getVirtualDeviceName();
+
+    emit(state.copyWith(
+      devices: devices,
+      outputDevices: outputs,
+      isVirtualDriverInstalled: driverInstalled,
+      virtualDeviceName: virtualName,
+      isVirtualMicMode: driverInstalled ? state.isVirtualMicMode : false,
+    ));
+  }
+
+  Future<void> _onModeChanged(
+    ModeChanged event,
+    Emitter<LoopbackState> emit,
+  ) async {
+    emit(state.copyWith(isVirtualMicMode: event.isVirtualMicMode));
+    if (state.isRunning) {
+      await rust.stopLoopback();
+      final targetOutput = event.isVirtualMicMode
+          ? state.virtualDeviceName
+          : state.selectedOutput;
+      final msg = await rust.startLoopback(
+        deviceName: state.selectedDevice,
+        outputName: targetOutput,
+      );
+      emit(state.copyWith(status: LoopbackStatus.running, message: msg));
+    }
+  }
+
+  void _onAudioLevelUpdated(
+    AudioLevelUpdated event,
+    Emitter<LoopbackState> emit,
+  ) {
+    emit(state.copyWith(
+      inputLevel: event.level.inputLevel,
+      outputLevel: event.level.outputLevel,
+    ));
   }
 
   Future<void> _onDeviceSelected(
@@ -131,9 +256,12 @@ class LoopbackBloc extends Bloc<LoopbackEvent, LoopbackState> {
     // Jika sedang jalan, restart dengan device baru.
     if (state.isRunning) {
       await rust.stopLoopback();
+      final targetOutput = state.isVirtualMicMode && state.virtualDeviceName != null
+          ? state.virtualDeviceName
+          : state.selectedOutput;
       final msg = await rust.startLoopback(
         deviceName: event.device,
-        outputName: state.selectedOutput,
+        outputName: targetOutput,
       );
       emit(state.copyWith(status: LoopbackStatus.running, message: msg));
     }
@@ -147,7 +275,7 @@ class LoopbackBloc extends Bloc<LoopbackEvent, LoopbackState> {
       selectedOutput: event.device,
       clearOutput: event.device == null,
     ));
-    if (state.isRunning) {
+    if (state.isRunning && !state.isVirtualMicMode) {
       await rust.stopLoopback();
       final msg = await rust.startLoopback(
         deviceName: state.selectedDevice,
@@ -162,9 +290,12 @@ class LoopbackBloc extends Bloc<LoopbackEvent, LoopbackState> {
     Emitter<LoopbackState> emit,
   ) async {
     try {
+      final targetOutput = state.isVirtualMicMode && state.virtualDeviceName != null
+          ? state.virtualDeviceName
+          : state.selectedOutput;
       final msg = await rust.startLoopback(
         deviceName: state.selectedDevice,
-        outputName: state.selectedOutput,
+        outputName: targetOutput,
       );
       emit(state.copyWith(status: LoopbackStatus.running, message: msg));
     } catch (e) {
@@ -178,7 +309,12 @@ class LoopbackBloc extends Bloc<LoopbackEvent, LoopbackState> {
   ) async {
     try {
       final msg = await rust.stopLoopback();
-      emit(state.copyWith(status: LoopbackStatus.idle, message: msg));
+      emit(state.copyWith(
+        status: LoopbackStatus.idle,
+        message: msg,
+        inputLevel: 0.0,
+        outputLevel: 0.0,
+      ));
     } catch (e) {
       emit(state.copyWith(status: LoopbackStatus.error, message: 'Error: $e'));
     }
@@ -189,9 +325,9 @@ class LoopbackBloc extends Bloc<LoopbackEvent, LoopbackState> {
     Emitter<LoopbackState> emit,
   ) async {
     if (state.isRunning) {
-      add(const LoopbackStopped());
+      await _onStopped(const LoopbackStopped(), emit);
     } else {
-      add(const LoopbackStarted());
+      await _onStarted(const LoopbackStarted(), emit);
     }
   }
 
@@ -199,5 +335,11 @@ class LoopbackBloc extends Bloc<LoopbackEvent, LoopbackState> {
     final next = !state.denoiseOn;
     rust.setDenoise(enabled: next);
     emit(state.copyWith(denoiseOn: next));
+  }
+
+  @override
+  Future<void> close() {
+    _levelSub?.cancel();
+    return super.close();
   }
 }

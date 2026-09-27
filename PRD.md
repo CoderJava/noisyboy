@@ -119,11 +119,12 @@ flowchart TD
 
 ## 5. Fitur MVP
 
-- `[ ]` Capture mic fisik via Rust `cpal`.
-- `[ ]` Integrasi `nnnoiseless` untuk denoise real-time.
-- `[ ]` Virtual mic "NoisyBoy Mic" (native macOS, BlackHole-based).
-- `[ ]` Routing audio bersih ke virtual mic.
-- `[ ]` UI Flutter: toggle on/off, pilih input device, VU meter.
+- `[x]` Capture mic fisik via Rust `cpal`.
+- `[x]` Integrasi `nnnoiseless` untuk denoise real-time + Intelligent VAD Gating.
+- `[x]` UI Flutter: toggle on/off, pilih input device, VU meter & real-time level visualizer.
+- `[x]` Virtual mic "NoisyBoy Audio" (native macOS CoreAudio HAL Plugin).
+- `[x]` Routing audio bersih ke virtual mic (Meeting Mode vs Speaker Test Mode).
+- `[x]` macOS MenuBar Tray (Status bar icon, quick controls, background execution).
 - `[ ]` Persist pengaturan.
 
 ## Fitur Fase 2
@@ -166,8 +167,8 @@ flowchart TD
 ## 8. Rencana Bertahap (rekomendasi)
 
 1. **Milestone 1**: Flutter macOS app + `flutter_rust_bridge` setup. Rust `cpal`
-   capture mic → play balik ke speaker (loopback). Buktikan pipeline audio jalan.
-2. **Milestone 2**: Integrasi `nnnoiseless` → denoise di loopback. Dengar hasil bersih.
-3. **Milestone 3**: UI Flutter (toggle, device picker, VU meter) + stream level via bridge.
-4. **Milestone 4**: Virtual mic driver native macOS (BlackHole-based) + routing.
-5. **Milestone 5**: Packaging, signing, notarization.
+   capture mic → play balik ke speaker (loopback). Buktikan pipeline audio jalan. `[SELESAI]`
+2. **Milestone 2**: Integrasi `nnnoiseless` → denoise di loopback + Intelligent VAD Gate. Dengar hasil bersih. `[SELESAI]`
+3. **Milestone 3**: UI Flutter (toggle, device picker, VU meter) + stream level via bridge. `[SELESAI]`
+4. **Milestone 4**: Virtual mic driver native macOS (NoisyBoy Audio) + routing. `[SELESAI]`
+5. **Milestone 5**: Packaging macOS installer (.pkg & .dmg with auto CoreAudio activation). `[SELESAI]`

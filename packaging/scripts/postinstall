@@ -1,0 +1,11 @@
+#!/bin/bash
+# Post-install script for NoisyBoy Virtual Audio Driver
+
+# Fix permissions for the HAL driver
+chmod -R 755 "/Library/Audio/Plug-Ins/HAL/NoisyBoyAudio.driver" 2>/dev/null || true
+chown -R root:wheel "/Library/Audio/Plug-Ins/HAL/NoisyBoyAudio.driver" 2>/dev/null || true
+
+# Restart CoreAudio daemon to load the new driver
+killall coreaudiod 2>/dev/null || true
+
+exit 0

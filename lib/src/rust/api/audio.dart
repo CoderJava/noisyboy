@@ -6,8 +6,13 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `new`, `push`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AudioEngine`, `LinearResampler`
+// These functions are ignored because they are not marked as `pub`: `new`, `new`, `new`, `process`, `process`, `push`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AudioEngine`, `HighPassFilter`, `LinearResampler`, `VadGate`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `drop`
+
+/// Daftarkan stream sink untuk menerima update level audio secara live.
+Stream<AudioLevel> createAudioLevelStream() =>
+    RustLib.instance.api.crateApiAudioCreateAudioLevelStream();
 
 /// Daftar nama device input yang tersedia.
 List<String> listInputDevices() =>
@@ -16,6 +21,14 @@ List<String> listInputDevices() =>
 /// Daftar nama device output (speaker) yang tersedia.
 List<String> listOutputDevices() =>
     RustLib.instance.api.crateApiAudioListOutputDevices();
+
+/// Cek apakah virtual audio driver (NoisyBoy Audio atau BlackHole) terpasang di sistem.
+bool isVirtualDriverInstalled() =>
+    RustLib.instance.api.crateApiAudioIsVirtualDriverInstalled();
+
+/// Dapatkan nama virtual output device jika tersedia.
+String? getVirtualDeviceName() =>
+    RustLib.instance.api.crateApiAudioGetVirtualDeviceName();
 
 /// Aktif/nonaktifkan denoise secara live.
 void setDenoise({required bool enabled}) =>
@@ -41,3 +54,22 @@ Future<String> stopLoopback() =>
 
 /// Apakah loopback sedang berjalan.
 bool isRunning() => RustLib.instance.api.crateApiAudioIsRunning();
+
+/// Data level audio untuk visualisasi VU meter / waveform di UI.
+class AudioLevel {
+  final double inputLevel;
+  final double outputLevel;
+
+  const AudioLevel({required this.inputLevel, required this.outputLevel});
+
+  @override
+  int get hashCode => inputLevel.hashCode ^ outputLevel.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AudioLevel &&
+          runtimeType == other.runtimeType &&
+          inputLevel == other.inputLevel &&
+          outputLevel == other.outputLevel;
+}
